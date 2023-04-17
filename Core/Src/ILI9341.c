@@ -132,6 +132,10 @@ void LCD_SPI_Init(void)
 
 	// Set frame format
 	pSPI->CR2 &= ~(1 << 4);
+
+	// Set data size
+	pSPI->CR2 &= ~(0xF << 8);
+	pSPI->CR2 |= (7 << 8);
 }
 
 
@@ -165,7 +169,7 @@ void LCD_Write_Cmd(uint8_t cmd)
 	while(!(pSPI->SR & (1 << 1)));
 
 	// Load the command into the peripheral data register
-	pSPI->DR = cmd;
+	*((__IO uint8_t *)&pSPI->DR) = cmd;
 
 	// Make sure the command is sent
 	while(!(pSPI->SR & (1 << 1)));
@@ -203,7 +207,7 @@ void LCD_Write_Data(uint8_t *data, uint32_t len)
 		while(!(pSPI->SR & (1 << 1)));
 
 		// Load the command into the peripheral data register
-		pSPI->DR = data[i];
+		*((__IO uint8_t *)&pSPI->DR) = data[i];
 	}
 	// Make sure the command is sent
 	while(!(pSPI->SR & (1 << 1)));
@@ -217,11 +221,9 @@ void LCD_Write_Data(uint8_t *data, uint32_t len)
 void LCD_Config(void)
 {
 	uint8_t params[15];
-	uint8_t data[255];
 	LCD_Write_Cmd(LCD_SW_RESET);
 
 	LCD_Write_Cmd(LCD_PWR_CTRL_B);
-	LCD_Read_data(data);
 	params[0] = 0x00;
 	params[1] = 0xD9;
 	params[2] = 0x30;
@@ -401,10 +403,14 @@ void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
 	buff_ptr = (uint16_t*)buffer;
 	while(nbytes)
 	{
-	 while(!(pSPI->SR & (1 << 1)));
-	 pSPI->DR = *buff_ptr;
-	 ++buff_ptr;
-	 nbytes -= 2;
+		while(!(pSPI->SR & (1 << 1)));
+		pSPI->DR = *buff_ptr;
+		++buff_ptr;
+		nbytes -= 2;
+
+		// Make sure the command is sent
+		while(!(pSPI->SR & (1 << 1)));
+		while((pSPI->SR & (1 << 7)));
 	}
 
 	__disable_spi();
@@ -437,7 +443,7 @@ void lcd_buffer_init(bsp_lcd_t *lcd)
 }
 
 
-void bsp_lcd_set_backgrounf_color(uint32_t rgb888)
+void bsp_lcd_set_background_color(uint32_t rgb888)
 {
 	bsp_lcd_fill_rect(rgb888,0,(BSP_LCD_ACTIVE_WIDTH),0,(BSP_LCD_ACTIVE_HEIGHT));
 }

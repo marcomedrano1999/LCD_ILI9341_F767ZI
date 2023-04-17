@@ -121,7 +121,15 @@ int main(void)
 
 
 
-  bsp_lcd_set_backgrounf_color(RED);
+	bsp_lcd_set_background_color(RED);  		// Displays RED
+	bsp_lcd_set_background_color(BLUE);			// Displays GREEN
+	bsp_lcd_set_background_color(GREEN);		// Displays BLUE
+	bsp_lcd_set_background_color(BLACK);		// Displays BLACK
+	bsp_lcd_set_background_color(WHITE);		// Displays WHITE
+	bsp_lcd_set_background_color(ORANGE);		// Displays VIOLET
+	bsp_lcd_set_background_color(YELLOW);		// Displays VIOLET
+	bsp_lcd_set_background_color(INDIGO);		// Displays dark red
+	bsp_lcd_set_background_color(VIOLET);		// Displays brown
   /* USER CODE END 2 */
 
   /* Infinite loop */

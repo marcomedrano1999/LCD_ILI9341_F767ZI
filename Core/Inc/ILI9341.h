@@ -197,11 +197,11 @@
 
 #define __enable_spi()				(SPI3->CR1 |= (1 << 6))
 #define __disable_spi()				do{while(SPI3->SR & (1<<7)); SPI3->CR1 &=~ (1 << 6);}while(0)
-#define __spi_set_dff_16bit()		(SPI3->CR1 |= (1<<11))
-#define __spi_set_dff_8bit()		(SPI3->CR1 &= ~(1<<11))
+#define __spi_set_dff_16bit()		(SPI3->CR2 |= (0xF<<8))
+#define __spi_set_dff_8bit()		do{SPI3->CR2 &= ~(0xF<<11); SPI3->CR2 |= (0x7<<8);}while(0)
 
-#define HIGH_16(num) (((uint16_t)num) << 8)
-#define LOW_16(num)  ((uint16_t)num)
+#define HIGH_16(num) (((uint16_t)num >> 8) & 0xFFU)
+#define LOW_16(num)  (((uint16_t)num >> 0) & 0xFFU)
 
 typedef struct{
 	uint16_t x1;
@@ -244,7 +244,7 @@ void lcd_set_orientation(uint8_t orientation);
 void lcd_buffer_init(bsp_lcd_t *lcd);
 
 void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height);
-void bsp_lcd_set_backgrounf_color(uint32_t rgb888);
+void bsp_lcd_set_background_color(uint32_t rgb888);
 uint16_t bsp_lcd_convert_rgb888_to_rgb565(uint32_t rgb888);
 uint32_t get_total_bytes(bsp_lcd_t *hlcd, uint32_t width, uint32_t height);
 void make_area(lcd_area_t *area, uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height);
