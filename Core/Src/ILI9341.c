@@ -9,6 +9,12 @@
 #include "ILI9341.h"
 #include "stm32f7xx.h"
 
+bsp_lcd_t lcd_handle;
+bsp_lcd_t *hlcd = &lcd_handle;
+
+uint8_t bsp_db[DB_SIZE];
+uint8_t bsp_wb[DB_SIZE];
+
 
 void LCD_ILI9341_Init(void)
 {
@@ -24,8 +30,21 @@ void LCD_ILI9341_Init(void)
 	// Reset the LCD
 	LCD_Reset();
 
+	// Set display format data
+	hlcd->orientation = BSP_LCD_ORIENTATION;
+	hlcd->pixel_format = BSP_LCD_PIXEL_FMT;
+	hlcd->area.x1 = 0;
+	hlcd->area.x2 = BSP_LCD_ACTIVE_WIDTH-1;
+	hlcd->area.y1 = 0;
+	hlcd->area.y2 = BSP_LCD_ACTIVE_HEIGHT-1;
+
 	// Configure the LCD
 	LCD_Config();
+
+	// Configure the display
+	lcd_set_display_area(&hlcd->area);
+	lcd_set_orientation(hlcd->orientation);
+	lcd_buffer_init(hlcd);
 }
 
 
@@ -100,7 +119,10 @@ void LCD_SPI_Init(void)
 	pSPI->CR1 |= (1 << 8);
 
 	// Set the baudrate ctrl -> 48 / 16 = 3 MHZ
-	pSPI->CR1 |= (3 << 3);
+	pSPI->CR1 |= (4 << 3);
+
+	// Set configuration to Master
+	pSPI->CR1 |= (1 << 2);
 
 	// Set clock polarity to 0
 	pSPI->CR1 &= ~(1 << 1);
@@ -154,39 +176,52 @@ void LCD_Write_Cmd(uint8_t cmd)
 
 }
 
+void LCD_Read_data(uint8_t *data)
+{
+	uint8_t i = 0;
+	while((SPI3->SR & (1 << 0)))
+	{
+		if(i<255)
+		{
+			data[i] = SPI3->DR;
+			i++;
+		}
+	}
+}
+
 
 void LCD_Write_Data(uint8_t *data, uint32_t len)
 {
 	SPI_TypeDef *pSPI = SPI3;
 
+	// Set CSX to low for data transmission
+	LCD_CSX_LOW();
+
 	for(uint32_t i=0;i<len;i++)
 	{
-		// Set CSX to low for data transmission
-		LCD_CSX_LOW();
-
 		// Wait till the transfer buffer is empty
 		while(!(pSPI->SR & (1 << 1)));
 
 		// Load the command into the peripheral data register
 		pSPI->DR = data[i];
-
-		// Make sure the command is sent
-		while(!(pSPI->SR & (1 << 1)));
-		while((pSPI->SR & (1 << 7)));
-
-		// Reset pins
-		LCD_CSX_HIGH();
 	}
+	// Make sure the command is sent
+	while(!(pSPI->SR & (1 << 1)));
+	while((pSPI->SR & (1 << 7)));
+
+	// Reset pins
+	LCD_CSX_HIGH();
 }
 
 
 void LCD_Config(void)
 {
 	uint8_t params[15];
-
+	uint8_t data[255];
 	LCD_Write_Cmd(LCD_SW_RESET);
 
 	LCD_Write_Cmd(LCD_PWR_CTRL_B);
+	LCD_Read_data(data);
 	params[0] = 0x00;
 	params[1] = 0xD9;
 	params[2] = 0x30;
@@ -323,7 +358,238 @@ void LCD_Config(void)
 	LCD_Write_Cmd(LCD_DISPLAY_ON);
 }
 
+void bsp_lcd_set_display_area(uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
+{
+	lcd_area_t area;
+	area.x1 = x1;
+	area.x2 = x2;
+	area.y1 = y1;
+	area.y2 = y2;
+	lcd_set_display_area(&area);
+}
+
+
+void lcd_set_display_area(lcd_area_t *area)
+{
+	uint8_t params[4];
+	// Column address set(2Ah)
+	params[0] = HIGH_16(area->x1);
+	params[1] = LOW_16(area->x1);
+	params[2] = HIGH_16(area->x2);
+	params[3] = LOW_16(area->x2);
+	LCD_Write_Cmd(LCD_COLUMN_ADDR_SET);
+	LCD_Write_Data(params,4);
+
+	params[0] = HIGH_16(area->y1);
+	params[1] = LOW_16(area->y1);
+	params[2] = HIGH_16(area->y2);
+	params[3] = LOW_16(area->y2);
+	LCD_Write_Cmd(LCD_PAGE_ADDR_SET);
+	LCD_Write_Data(params,4);
+}
+void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes)
+{
+	SPI_TypeDef *pSPI = SPI3;
+	uint16_t *buff_ptr;
+
+	__disable_spi();
+	__spi_set_dff_16bit();
+	__enable_spi();
+
+	LCD_CSX_LOW();
+
+	buff_ptr = (uint16_t*)buffer;
+	while(nbytes)
+	{
+	 while(!(pSPI->SR & (1 << 1)));
+	 pSPI->DR = *buff_ptr;
+	 ++buff_ptr;
+	 nbytes -= 2;
+	}
+
+	__disable_spi();
+	LCD_CSX_HIGH();
+	__spi_set_dff_8bit();
+	__enable_spi();
+}
+
+
+void lcd_set_orientation(uint8_t orientation)
+{
+	uint8_t param;
+
+	if(orientation == LANDSCAPE)
+		param = MADCTL_MV | MADCTL_MY | MADCTL_BGR; // Memory access control <Landscape setting>
+	else if(orientation == PORTRAIT)
+		param = MADCTL_MY | MADCTL_MX | MADCTL_BGR; // Memory access control <portrait setting>
+
+	LCD_Write_Cmd(LCD_MEM_ACCESS_CTRL);
+	LCD_Write_Data(&param, 1);
+}
+
+
+void lcd_buffer_init(bsp_lcd_t *lcd)
+{
+	lcd->draw_buffer1 = bsp_db;
+	lcd->draw_buffer2 = bsp_wb;
+	lcd->buff_to_draw = NULL;
+	lcd->buff_to_flush = NULL;
+}
+
+
+void bsp_lcd_set_backgrounf_color(uint32_t rgb888)
+{
+	bsp_lcd_fill_rect(rgb888,0,(BSP_LCD_ACTIVE_WIDTH),0,(BSP_LCD_ACTIVE_HEIGHT));
+}
+
+
+uint16_t bsp_lcd_convert_rgb888_to_rgb565(uint32_t rgb888)
+{
+	uint16_t r = (rgb888 >> 19) & 0x1FU;
+	uint16_t g = (rgb888 >> 10) & 0x3FU;
+	uint16_t b = (rgb888 >> 3)  & 0x1FU;
+
+	return (uint16_t)((r<<11) | (g << 5) | b);
+}
 
 
 
+void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height)
+{
+	uint32_t total_bytes_to_write = 0;
+	uint32_t bytes_sent_so_far = 0;
+	uint32_t remaining_bytes = 0;
+	uint32_t npix;
+	uint32_t pixels_sent = 0;
+	uint32_t x1,y1;
+	uint32_t pixel_per_line = x_width;
 
+	if((x_start+x_width) > BSP_LCD_ACTIVE_WIDTH) return;
+	if((y_start+y_height) > BSP_LCD_ACTIVE_HEIGHT) return;
+
+
+	//1. Calculate total number of bytes written into DB
+	total_bytes_to_write = get_total_bytes(hlcd, x_width, y_height);
+	remaining_bytes = total_bytes_to_write;
+
+	while(remaining_bytes)
+	{
+		x1 = x_start + (pixels_sent % pixel_per_line);
+		y1 = y_start + (pixels_sent / pixel_per_line);
+
+		make_area(&hlcd->area,x1,x_width,y1,y_height);
+
+		if(x1 != x_start)
+			npix = x_start + x_width - x1;
+		else
+			npix = bytes_to_pixels(remaining_bytes, hlcd->pixel_format);
+
+		bytes_sent_so_far += copy_to_draw_buffer(hlcd,pixels_to_bytes(npix,hlcd->pixel_format),rgb888);
+		pixels_sent = bytes_to_pixels(bytes_sent_so_far, hlcd->pixel_format);
+		remaining_bytes = total_bytes_to_write - bytes_sent_so_far;
+	}
+}
+
+
+uint32_t get_total_bytes(bsp_lcd_t *hlcd, uint32_t width, uint32_t height)
+{
+	uint8_t bytes_per_pixel = 2;
+	if(hlcd->pixel_format == BSP_LCD_PIXEL_FMT_RGB565)
+		bytes_per_pixel=2;
+	return (width*height*bytes_per_pixel);
+}
+
+void make_area(lcd_area_t *area, uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height)
+{
+	uint16_t lcd_total_width = BSP_LCD_ACTIVE_WIDTH-1;
+	uint16_t lcd_total_height = BSP_LCD_ACTIVE_HEIGHT-1;
+
+	area->x1 = x_start;
+	area->x2 = x_start + x_width - 1;
+	area->y1 = y_start;
+	area->y2 = y_start + y_height - 1;
+
+	area->x2 = (area->x2 > lcd_total_width) ? lcd_total_width : area->x2;
+	area->y2 = (area->y2 > lcd_total_height) ? lcd_total_height : area->y2;
+}
+
+uint32_t bytes_to_pixels(uint32_t nbytes, uint8_t pixel_format)
+{
+	(void)pixel_format;
+	return nbytes/2;
+}
+
+uint32_t copy_to_draw_buffer(bsp_lcd_t *hlcd, uint32_t nbytes, uint32_t rgb888)
+{
+	uint16_t *fb_ptr = NULL;
+	uint32_t npixels;
+	hlcd->buff_to_draw = get_buff(hlcd);
+	fb_ptr = (uint16_t*)hlcd->buff_to_draw;
+	nbytes = ((nbytes > DB_SIZE)? DB_SIZE : nbytes);
+	npixels = bytes_to_pixels(nbytes, hlcd->pixel_format);
+
+	if(hlcd->buff_to_draw != NULL)
+	{
+		for(uint32_t i=0;i < npixels; i++)
+		{
+			*fb_ptr = bsp_lcd_convert_rgb888_to_rgb565(rgb888);
+			fb_ptr++;
+		}
+
+		hlcd->write_lenght = pixels_to_bytes(npixels,hlcd->pixel_format);
+		while(!is_lcd_write_allowed(hlcd));
+		hlcd->buff_to_flush = hlcd->buff_to_draw;
+		hlcd->buff_to_draw = NULL;
+		hlcd_flush(hlcd);
+
+		return pixels_to_bytes(npixels,hlcd->pixel_format);
+	}
+
+	return 0;
+}
+
+uint8_t *get_buff(bsp_lcd_t *hlcd)
+{
+	uint32_t buf1 = (uint32_t)hlcd->draw_buffer1;
+	uint32_t buf2 = (uint32_t)hlcd->draw_buffer2;
+
+	//__disable_irq();
+
+	if(hlcd->buff_to_draw == NULL && hlcd->buff_to_flush == NULL)
+		return hlcd->draw_buffer1;
+	else if((uint32_t)hlcd->buff_to_flush == buf1 && hlcd->buff_to_draw == NULL)
+		return hlcd->draw_buffer2;
+	else if((uint32_t)hlcd->buff_to_flush==buf2 && hlcd->buff_to_draw==NULL)
+		return hlcd->draw_buffer1;
+
+	//__enable_irq()
+
+	return NULL;
+}
+
+
+uint8_t is_lcd_write_allowed(bsp_lcd_t *hlcd)
+{
+	//__disable_irq();
+	if(!hlcd->buff_to_flush)
+		return 1;
+
+	//__enable_irq();
+
+	return 0;
+}
+
+void hlcd_flush(bsp_lcd_t *hlcd)
+{
+	lcd_set_display_area(&hlcd->area);
+
+	LCD_Write_Cmd(LCD_MEM_WRITE);
+	bsp_lcd_write(hlcd->buff_to_flush,hlcd->write_lenght);
+	hlcd->buff_to_flush = NULL;
+}
+
+uint32_t pixels_to_bytes(uint32_t pixels,uint8_t pixel_format)
+{
+	(void)pixel_format;
+	return pixels * 2UL;
+}

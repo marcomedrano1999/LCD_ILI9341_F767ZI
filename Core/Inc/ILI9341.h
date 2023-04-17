@@ -130,7 +130,6 @@
 
 
 
-
 /*
  *  Display macros
  */
@@ -141,6 +140,48 @@
 #define MADCTL_RGB				0x00		// Red-Green-Blue pixel order
 #define MADCTL_BGR				0x08		// Blue-Green-Red pixel order
 #define MADCTL_MH				0x04		// LCD refresh right to left
+
+#define BSP_LCD_WIDTH			240
+#define BSP_LCD_HEIGHT			320
+
+
+#define LANDSCAPE				1
+#define PORTRAIT				0
+#define BSP_LCD_ORIENTATION		PORTRAIT
+
+#if(BSP_LCD_ORIENTATION == PORTRAIT)
+	#define BSP_LCD_ACTIVE_WIDTH	BSP_LCD_WIDTH
+	#define BSP_LCD_ACTIVE_HEIGHT	BSP_LCD_HEIGHT
+#elif(BSP_LCD_ORIENTATION == LANDSCAPE)
+	#define BSP_LCD_ACTIVE_WIDTH	BSP_LCD_HEIGHT
+	#define BSP_LCD_ACTIVE_HEIGHT	BSP_LCD_WIDTH
+#endif
+
+
+/* Pixel formats */
+#define BSP_LCD_PIXEL_FMT_L8			1
+#define BSP_LCD_PIXEL_FMT_RGB565		2
+#define BSP_LCD_PIXEL_FMT_RGB666		3
+#define BSP_LCD_PIXEL_FMT_RGB888		4
+#define BSP_LCD_PIXEL_FMT				BSP_LCD_PIXEL_FMT_RGB565
+
+
+/* Colors */
+#define RGB888(r,g,b)	(((r) << 16) | ((g) << 8) | (b))
+
+#define	VIOLET		RGB888(148,0,211)
+#define	INDIGO		RGB888(75,0,130)
+#define	BLUE		RGB888(0,0,255)
+#define	GREEN		RGB888(0,255,0)
+#define	YELLOW		RGB888(255,255,0)
+#define	ORANGE		RGB888(255,127,0)
+#define	RED			RGB888(255,0,0)
+#define	WHITE		RGB888(255,255,255)
+#define	BLACK		RGB888(0,0,0)
+
+/* Data macros */
+#define DB_SIZE						(10UL*1024UL)
+
 
 
 /*
@@ -154,6 +195,35 @@
 #define LCD_DCX_HIGH() 		(LCD_DCX_PORT->ODR |= (1 << LCD_DCX_PIN))
 
 
+#define __enable_spi()				(SPI3->CR1 |= (1 << 6))
+#define __disable_spi()				do{while(SPI3->SR & (1<<7)); SPI3->CR1 &=~ (1 << 6);}while(0)
+#define __spi_set_dff_16bit()		(SPI3->CR1 |= (1<<11))
+#define __spi_set_dff_8bit()		(SPI3->CR1 &= ~(1<<11))
+
+#define HIGH_16(num) (((uint16_t)num) << 8)
+#define LOW_16(num)  ((uint16_t)num)
+
+typedef struct{
+	uint16_t x1;
+	uint16_t x2;
+	uint16_t y1;
+	uint16_t y2;
+}lcd_area_t;
+
+
+typedef struct{
+	uint8_t orientation;
+	uint8_t pixel_format;
+	uint8_t *draw_buffer1;
+	uint8_t *draw_buffer2;
+	uint32_t write_lenght;
+	uint8_t *buff_to_draw;
+	uint8_t *buff_to_flush;
+	lcd_area_t area;
+	//bsp_lcd_dma_cplt_cb_t dma_cplt_cb;
+	//bsp_lcd_dma_err_cb_t dma_err_cb;
+}bsp_lcd_t;
+
 /*
  * Function declarations
  */
@@ -166,13 +236,24 @@ void LCD_Config(void);
 void LCD_Write_Cmd(uint8_t cmd);
 void LCD_Write_Data(uint8_t *data, uint32_t len);
 void LCD_ILI9341_Init(void);
+void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes);
+void bsp_lcd_set_display_area(uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2);
+void lcd_set_display_area(lcd_area_t *area);
+void bsp_lcd_write(uint8_t *buffer, uint32_t nbytes);
+void lcd_set_orientation(uint8_t orientation);
+void lcd_buffer_init(bsp_lcd_t *lcd);
 
-
-
-
-
-
-
+void bsp_lcd_fill_rect(uint32_t rgb888, uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height);
+void bsp_lcd_set_backgrounf_color(uint32_t rgb888);
+uint16_t bsp_lcd_convert_rgb888_to_rgb565(uint32_t rgb888);
+uint32_t get_total_bytes(bsp_lcd_t *hlcd, uint32_t width, uint32_t height);
+void make_area(lcd_area_t *area, uint32_t x_start, uint32_t x_width, uint32_t y_start, uint32_t y_height);
+uint32_t bytes_to_pixels(uint32_t nbytes, uint8_t pixel_format);
+uint32_t copy_to_draw_buffer(bsp_lcd_t *hlcd, uint32_t nbytes, uint32_t rgb888);
+uint8_t *get_buff(bsp_lcd_t *hlcd);
+uint8_t is_lcd_write_allowed(bsp_lcd_t *hlcd);
+void hlcd_flush(bsp_lcd_t *hlcd);
+uint32_t pixels_to_bytes(uint32_t pixels,uint8_t pixel_format);
 
 
 #endif /* INC_ILI9341_H_ */

@@ -118,6 +118,10 @@ int main(void)
   MX_USB_OTG_FS_PCD_Init();
   /* USER CODE BEGIN 2 */
   LCD_ILI9341_Init();
+
+
+
+  bsp_lcd_set_backgrounf_color(RED);
   /* USER CODE END 2 */
 
   /* Infinite loop */
