@@ -130,6 +130,19 @@ int main(void)
 	bsp_lcd_set_background_color(YELLOW);		// Displays VIOLET
 	bsp_lcd_set_background_color(INDIGO);		// Displays dark red
 	bsp_lcd_set_background_color(VIOLET);		// Displays brown
+
+
+	//bsp_lcd_set_display_area(60, 259,100,139);
+	bsp_lcd_set_display_area(100,139,60, 259);
+	uint16_t data[200ul*40ul];
+	for(uint32_t i = 0; i< (200ul*40ul); i++)
+	{
+		data[i] = bsp_lcd_convert_rgb888_to_rgb565(RED);
+	}
+	LCD_Write_Cmd(LCD_MEM_WRITE);
+	bsp_lcd_write((uint8_t*)data, (200ul*40ul*2ul));
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
